@@ -12,6 +12,7 @@ import MyCommunitiesPage from "@/react-app/pages/MyCommunities";
 import CommunityDetailPage from "@/react-app/pages/CommunityDetail";
 import OnboardingPage from "@/react-app/pages/Onboarding";
 import ProfilePage from "@/react-app/pages/Profile";
+import CodingChallengesPage from "@/react-app/pages/CodingChallenges";
 
 export default function App() {
   return (
@@ -22,7 +23,9 @@ export default function App() {
           <Route path="/auth/callback" element={<AuthCallbackPage />} />
           <Route path="/onboarding" element={<OnboardingPage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/profile/:userId" element={<ProfilePage />} />
           <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/challenges" element={<CodingChallengesPage />} />
           <Route path="/pods/my" element={<MyPodsPage />} />
           <Route path="/pods/browse" element={<BrowsePodsPage />} />
           <Route path="/pods/create" element={<CreatePodPage />} />

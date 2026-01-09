@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { MessageCircle, X, Send, Bot } from 'lucide-react';
+import { MessageCircle, X, Send, Bot, Paperclip, Link as LinkIcon } from 'lucide-react';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -18,6 +18,9 @@ export default function KumarChatbot() {
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [attachmentType, setAttachmentType] = useState<'file' | 'link' | null>(null);
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+  const [attachmentLink, setAttachmentLink] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -28,12 +31,32 @@ export default function KumarChatbot() {
     scrollToBottom();
   }, [messages]);
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        alert('File size must be less than 5MB');
+        return;
+      }
+      setAttachmentFile(file);
+      setAttachmentType('file');
+      setAttachmentLink('');
+    }
+  };
+
   const handleSend = async () => {
-    if (!input.trim() || loading) return;
+    if ((!input.trim() && !attachmentFile && !attachmentLink.trim()) || loading) return;
+
+    let messageContent = input.trim();
+    if (attachmentType === 'file' && attachmentFile) {
+      messageContent = messageContent || `Shared file: ${attachmentFile.name}`;
+    } else if (attachmentType === 'link' && attachmentLink.trim()) {
+      messageContent = messageContent || `Shared link: ${attachmentLink}`;
+    }
 
     const userMessage: Message = {
       role: 'user',
-      content: input.trim(),
+      content: messageContent,
       timestamp: new Date(),
     };
 
@@ -42,6 +65,27 @@ export default function KumarChatbot() {
     setLoading(true);
 
     try {
+      let attachmentData: any = {};
+      if (attachmentType === 'file' && attachmentFile) {
+        const reader = new FileReader();
+        const base64 = await new Promise<string>((resolve, reject) => {
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(attachmentFile);
+        });
+        attachmentData = {
+          attachment_type: 'file',
+          attachment_url: base64,
+          attachment_name: attachmentFile.name,
+        };
+      } else if (attachmentType === 'link' && attachmentLink.trim()) {
+        attachmentData = {
+          attachment_type: 'link',
+          attachment_url: attachmentLink.trim(),
+          attachment_name: attachmentLink.trim(),
+        };
+      }
+
       const response = await fetch('/api/chatbot/kumar', {
         method: 'POST',
         headers: {
@@ -49,11 +93,12 @@ export default function KumarChatbot() {
         },
         credentials: 'include',
         body: JSON.stringify({
-          message: userMessage.content,
+          message: input.trim() || (attachmentType ? 'See attachment' : ''),
           conversationHistory: messages.map((m) => ({
             role: m.role,
             content: m.content,
           })),
+          ...attachmentData,
         }),
       });
 
@@ -70,6 +115,9 @@ export default function KumarChatbot() {
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
+      setAttachmentType(null);
+      setAttachmentFile(null);
+      setAttachmentLink('');
     } catch (error) {
       const errorMessage: Message = {
         role: 'assistant',
@@ -165,7 +213,71 @@ export default function KumarChatbot() {
 
           {/* Input */}
           <div className="p-4 border-t border-gray-200 bg-white rounded-b-xl">
+            {(attachmentType === 'file' && attachmentFile) && (
+              <div className="mb-2 p-2 bg-blue-50 rounded-lg flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <Paperclip className="w-3 h-3 text-blue-600" />
+                  <span className="text-blue-900 truncate">{attachmentFile.name}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAttachmentType(null);
+                    setAttachmentFile(null);
+                  }}
+                  className="text-blue-600 hover:text-blue-800"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            )}
+            {attachmentType === 'link' && (
+              <div className="mb-2">
+                <input
+                  type="url"
+                  value={attachmentLink}
+                  onChange={(e) => setAttachmentLink(e.target.value)}
+                  placeholder="Paste a link..."
+                  className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAttachmentType(null);
+                    setAttachmentLink('');
+                  }}
+                  className="mt-1 text-xs text-gray-600 hover:text-gray-800"
+                >
+                  Remove link
+                </button>
+              </div>
+            )}
             <div className="flex gap-2">
+              <div className="flex gap-1">
+                <label className="cursor-pointer p-1.5 hover:bg-gray-100 rounded transition-colors">
+                  <Paperclip className="w-4 h-4 text-gray-600" />
+                  <input
+                    type="file"
+                    className="hidden"
+                    onChange={handleFileSelect}
+                    disabled={loading}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (attachmentType === 'link') {
+                      setAttachmentType(null);
+                      setAttachmentLink('');
+                    } else {
+                      setAttachmentType('link');
+                    }
+                  }}
+                  className="p-1.5 hover:bg-gray-100 rounded transition-colors"
+                >
+                  <LinkIcon className="w-4 h-4 text-gray-600" />
+                </button>
+              </div>
               <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
@@ -177,7 +289,7 @@ export default function KumarChatbot() {
               />
               <button
                 onClick={handleSend}
-                disabled={!input.trim() || loading}
+                disabled={(!input.trim() && !attachmentFile && !attachmentLink.trim()) || loading}
                 className="px-4 py-2 bg-gradient-to-r from-primary to-accent text-white rounded-lg hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
               >
                 <Send className="w-5 h-5" />

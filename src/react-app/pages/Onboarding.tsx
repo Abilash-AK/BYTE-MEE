@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '@/react-app/auth';
-import { Code2, Sparkles, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Code2, Sparkles, CheckCircle2, AlertCircle, Upload, FileImage, X } from 'lucide-react';
 
 const TECH_OPTIONS = [
   'React',
@@ -197,7 +197,16 @@ export default function Onboarding() {
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [selectedTech, setSelectedTech] = useState<string[]>([]);
+  const [verificationMethod, setVerificationMethod] = useState<'quiz' | 'certificate' | null>(null);
   const [answers, setAnswers] = useState<Record<number, string>>({});
+  const [certificateFile, setCertificateFile] = useState<File | null>(null);
+  const [certificatePreview, setCertificatePreview] = useState<string | null>(null);
+  const [certificateVerifying, setCertificateVerifying] = useState(false);
+  const [certificateResult, setCertificateResult] = useState<{
+    success: boolean;
+    message: string;
+    skills?: string[];
+  } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [validating, setValidating] = useState(false);
   const [validationResult, setValidationResult] = useState<{
@@ -294,14 +303,94 @@ export default function Onboarding() {
     }
   };
 
+  const handleCertificateSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 10 * 1024 * 1024) {
+        setError('Certificate image must be less than 10MB');
+        return;
+      }
+      if (!file.type.startsWith('image/')) {
+        setError('Please upload an image file');
+        return;
+      }
+      setCertificateFile(file);
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setCertificatePreview(e.target?.result as string);
+      };
+      reader.readAsDataURL(file);
+      setCertificateResult(null);
+      setError('');
+    }
+  };
+
+  const handleVerifyCertificate = async () => {
+    if (!certificateFile) {
+      setError('Please select a certificate image');
+      return;
+    }
+
+    setCertificateVerifying(true);
+    setError('');
+    setCertificateResult(null);
+
+    try {
+      // Convert file to base64
+      const reader = new FileReader();
+      const base64 = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => {
+          const result = reader.result as string;
+          // Remove data:image/...;base64, prefix
+          const base64Data = result.split(',')[1];
+          resolve(base64Data);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(certificateFile);
+      });
+
+      const response = await fetch('/api/profile/verify-certificate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          image: base64,
+          filename: certificateFile.name,
+          tech_stack: selectedTech,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setCertificateResult({
+          success: data.success,
+          message: data.message,
+          skills: data.skills || [],
+        });
+      } else {
+        setError(data.error || 'Failed to verify certificate');
+      }
+    } catch (err) {
+      setError('An error occurred while verifying the certificate');
+    } finally {
+      setCertificateVerifying(false);
+    }
+  };
+
   const handleSubmit = async () => {
     if (selectedTech.length === 0) {
       setError('Please select at least one technology');
       return;
     }
 
-    if (!validationResult?.success) {
+    if (verificationMethod === 'quiz' && !validationResult?.success) {
       setError(`Please complete the quiz and pass with at least ${requiredCorrect}/${filteredQuestions.length} correct answers`);
+      return;
+    }
+
+    if (verificationMethod === 'certificate' && !certificateResult?.success) {
+      setError('Please verify your certificate first');
       return;
     }
 
@@ -309,13 +398,22 @@ export default function Onboarding() {
     setError('');
 
     try {
+      const body: any = {
+        tech_stack: selectedTech.join(', '),
+      };
+
+      if (verificationMethod === 'quiz') {
+        body.coding_task_answer = JSON.stringify(answers);
+      } else if (verificationMethod === 'certificate') {
+        body.certificate_verified = true;
+        body.certificate_skills = certificateResult?.skills || [];
+      }
+
       const response = await fetch('/api/profile/onboarding', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tech_stack: selectedTech.join(', '),
-          coding_task_answer: JSON.stringify(answers),
-        }),
+        credentials: 'include',
+        body: JSON.stringify(body),
       });
 
       if (response.ok) {
@@ -367,7 +465,7 @@ export default function Onboarding() {
             }`}>
               2
             </div>
-            <span className="hidden sm:inline font-semibold">Coding Quiz</span>
+            <span className="hidden sm:inline font-semibold">Verification</span>
           </div>
         </div>
 
@@ -436,10 +534,60 @@ export default function Onboarding() {
                 }}
                 className="w-full px-6 py-4 bg-gradient-to-r from-primary to-accent text-white font-semibold rounded-lg hover:shadow-xl transition-all"
               >
-                Continue to Coding Quiz
+                Continue to Verification
               </button>
             </>
-          ) : (
+          ) : verificationMethod === null ? (
+            <>
+              <h2 className="text-2xl font-bold text-gray-900 mb-4">
+                Choose Verification Method
+              </h2>
+              <p className="text-gray-600 mb-6">
+                Select how you'd like to verify your skills. You can either take a coding quiz or upload a certificate.
+              </p>
+
+              <div className="grid md:grid-cols-2 gap-6 mb-6">
+                {/* Quiz Option */}
+                <button
+                  onClick={() => setVerificationMethod('quiz')}
+                  className="p-6 border-2 border-gray-200 rounded-xl hover:border-primary hover:shadow-lg transition-all text-left"
+                >
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                      <Code2 className="w-6 h-6 text-primary" />
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-900">Take Coding Quiz</h3>
+                  </div>
+                  <p className="text-gray-600">
+                    Answer multiple-choice questions about your selected technologies. You need 70% correct to pass.
+                  </p>
+                </button>
+
+                {/* Certificate Option */}
+                <button
+                  onClick={() => setVerificationMethod('certificate')}
+                  className="p-6 border-2 border-gray-200 rounded-xl hover:border-primary hover:shadow-lg transition-all text-left"
+                >
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-12 h-12 rounded-full bg-accent/10 flex items-center justify-center">
+                      <FileImage className="w-6 h-6 text-accent" />
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-900">Upload Certificate</h3>
+                  </div>
+                  <p className="text-gray-600">
+                    Upload a photo of your certificate. Our AI will analyze it and verify your skills automatically.
+                  </p>
+                </button>
+              </div>
+
+              <button
+                onClick={() => setStep(1)}
+                className="w-full px-6 py-3 border-2 border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 transition-all"
+              >
+                Back to Tech Stack
+              </button>
+            </>
+          ) : verificationMethod === 'quiz' ? (
             <>
               <h2 className="text-2xl font-bold text-gray-900 mb-4">
                 Coding Knowledge Quiz
@@ -588,6 +736,162 @@ export default function Onboarding() {
                       <>
                         <CheckCircle2 className="w-5 h-5" />
                         Submit Answers
+                      </>
+                    )}
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleSubmit}
+                    disabled={submitting}
+                    className="flex-1 px-6 py-4 bg-gradient-to-r from-secondary to-accent text-white font-semibold rounded-lg hover:shadow-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {submitting ? (
+                      <>
+                        <Sparkles className="w-5 h-5 animate-spin" />
+                        Completing Setup...
+                      </>
+                    ) : (
+                      'Complete Setup & Start Learning'
+                    )}
+                  </button>
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              <h2 className="text-2xl font-bold text-gray-900 mb-4">
+                Upload Certificate
+              </h2>
+              <p className="text-gray-600 mb-6">
+                Upload a photo of your certificate. Our AI will analyze it and verify your skills automatically.
+              </p>
+
+              {!certificateFile ? (
+                <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 mb-6">
+                  <label className="flex flex-col items-center justify-center cursor-pointer">
+                    <Upload className="w-12 h-12 text-gray-400 mb-4" />
+                    <span className="text-lg font-semibold text-gray-700 mb-2">
+                      Click to upload or drag and drop
+                    </span>
+                    <span className="text-sm text-gray-500">
+                      PNG, JPG, or JPEG (max 10MB)
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleCertificateSelect}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+              ) : (
+                <div className="space-y-4 mb-6">
+                  {certificatePreview && (
+                    <div className="relative border-2 border-gray-200 rounded-lg overflow-hidden">
+                      <img
+                        src={certificatePreview}
+                        alt="Certificate preview"
+                        className="w-full h-auto max-h-96 object-contain"
+                      />
+                      <button
+                        onClick={() => {
+                          setCertificateFile(null);
+                          setCertificatePreview(null);
+                          setCertificateResult(null);
+                        }}
+                        className="absolute top-2 right-2 p-2 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <p className="text-sm text-blue-900">
+                      <strong>File:</strong> {certificateFile.name} ({(certificateFile.size / 1024 / 1024).toFixed(2)} MB)
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {certificateResult && (
+                <div className={`mb-6 border-2 rounded-lg p-4 ${
+                  certificateResult.success
+                    ? 'bg-green-50 border-green-200'
+                    : 'bg-red-50 border-red-200'
+                }`}>
+                  <div className="flex items-start gap-2">
+                    {certificateResult.success ? (
+                      <CheckCircle2 className="w-6 h-6 text-green-600 mt-0.5 flex-shrink-0" />
+                    ) : (
+                      <AlertCircle className="w-6 h-6 text-red-600 mt-0.5 flex-shrink-0" />
+                    )}
+                    <div className="flex-1">
+                      <p className={`font-semibold mb-1 ${
+                        certificateResult.success ? 'text-green-900' : 'text-red-900'
+                      }`}>
+                        {certificateResult.success ? '✅ Certificate Verified!' : '❌ Verification Failed'}
+                      </p>
+                      <p className={`text-sm ${
+                        certificateResult.success ? 'text-green-700' : 'text-red-700'
+                      }`}>
+                        {certificateResult.message}
+                      </p>
+                      {certificateResult.success && certificateResult.skills && certificateResult.skills.length > 0 && (
+                        <div className="mt-2">
+                          <p className="text-sm font-semibold text-green-800 mb-1">Skills detected:</p>
+                          <div className="flex flex-wrap gap-2">
+                            {certificateResult.skills.map((skill, idx) => (
+                              <span key={idx} className="px-2 py-1 bg-green-100 text-green-800 rounded text-xs">
+                                {skill}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {error && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
+                    <p className="text-red-800">{error}</p>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setVerificationMethod(null);
+                    setCertificateFile(null);
+                    setCertificatePreview(null);
+                    setCertificateResult(null);
+                    setError('');
+                  }}
+                  disabled={certificateVerifying || submitting}
+                  className="px-6 py-4 border-2 border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 transition-all disabled:opacity-50"
+                >
+                  Back
+                </button>
+                {!certificateResult?.success ? (
+                  <button
+                    onClick={handleVerifyCertificate}
+                    disabled={certificateVerifying || !certificateFile}
+                    className="flex-1 px-6 py-4 bg-secondary text-white font-semibold rounded-lg hover:bg-secondary/90 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {certificateVerifying ? (
+                      <>
+                        <Sparkles className="w-5 h-5 animate-spin" />
+                        Analyzing Certificate...
+                      </>
+                    ) : (
+                      <>
+                        <FileImage className="w-5 h-5" />
+                        Verify Certificate
                       </>
                     )}
                   </button>

@@ -2,5 +2,10 @@ dist/
 node_modules/
 .wrangler/
 .dev.vars
+.env.local
+.env
 worker-configuration.d.ts
 CoLearn/
+*.log
+.DS_Store
+.vscode/

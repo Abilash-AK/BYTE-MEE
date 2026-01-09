@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router';
 import { useAuth } from '@/react-app/auth';
 import { useOnboardingCheck } from '@/react-app/hooks/useOnboardingCheck';
 import Sidebar from '@/react-app/components/Sidebar';
-import { Sparkles, Users, UserPlus, UserMinus, ArrowLeft, Send, MessageCircle } from 'lucide-react';
+import { Sparkles, Users, UserPlus, UserMinus, ArrowLeft, Send, MessageCircle, Paperclip, Link as LinkIcon, X } from 'lucide-react';
 
 interface Community {
   id: number;
@@ -32,6 +32,10 @@ interface Message {
   user_picture: string | null;
   message: string;
   created_at: string;
+  attachment_type?: string | null;
+  attachment_url?: string | null;
+  attachment_name?: string | null;
+  attachment_size?: number | null;
 }
 
 export default function CommunityDetail() {
@@ -45,6 +49,9 @@ export default function CommunityDetail() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [sendingMessage, setSendingMessage] = useState(false);
+  const [attachmentType, setAttachmentType] = useState<'file' | 'link' | null>(null);
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+  const [attachmentLink, setAttachmentLink] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -121,24 +128,73 @@ export default function CommunityDetail() {
     }
   };
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        alert('File size must be less than 5MB');
+        return;
+      }
+      setAttachmentFile(file);
+      setAttachmentType('file');
+      setAttachmentLink('');
+    }
+  };
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim() || sendingMessage) return;
+    if (!newMessage.trim() && !attachmentFile && !attachmentLink.trim()) return;
+    if (sendingMessage) return;
 
     setSendingMessage(true);
     try {
+      let attachmentData: any = {};
+      
+      if (attachmentType === 'file' && attachmentFile) {
+        // Convert file to base64
+        const reader = new FileReader();
+        const base64 = await new Promise<string>((resolve, reject) => {
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(attachmentFile);
+        });
+        attachmentData = {
+          attachment_type: 'file',
+          attachment_url: base64,
+          attachment_name: attachmentFile.name,
+          attachment_size: attachmentFile.size,
+        };
+      } else if (attachmentType === 'link' && attachmentLink.trim()) {
+        attachmentData = {
+          attachment_type: 'link',
+          attachment_url: attachmentLink.trim(),
+          attachment_name: attachmentLink.trim(),
+        };
+      }
+
       const response = await fetch(`/api/communities/${id}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: newMessage }),
+        credentials: 'include',
+        body: JSON.stringify({ 
+          message: newMessage.trim() || (attachmentType ? 'Shared an attachment' : ''),
+          ...attachmentData,
+        }),
       });
 
       if (response.ok) {
         setNewMessage('');
+        setAttachmentType(null);
+        setAttachmentFile(null);
+        setAttachmentLink('');
         await fetchMessages();
+      } else {
+        const error = await response.json();
+        alert(error.error || 'Failed to send message');
       }
     } catch (error) {
       console.error('Error sending message:', error);
+      alert('Failed to send message');
     } finally {
       setSendingMessage(false);
     }
@@ -339,6 +395,41 @@ export default function CommunityDetail() {
                                 <p className="text-sm whitespace-pre-wrap break-words">
                                   {message.message}
                                 </p>
+                                {message.attachment_type === 'link' && message.attachment_url && (
+                                  <div className="mt-2 pt-2 border-t border-white/20">
+                                    <a
+                                      href={message.attachment_url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-sm underline flex items-center gap-1"
+                                    >
+                                      <LinkIcon className="w-3 h-3" />
+                                      {message.attachment_name || message.attachment_url}
+                                    </a>
+                                  </div>
+                                )}
+                                {message.attachment_type === 'file' && message.attachment_name && (
+                                  <div className="mt-2 pt-2 border-t border-white/20">
+                                    <div className="flex items-center gap-2">
+                                      <Paperclip className="w-3 h-3" />
+                                      <span className="text-sm">{message.attachment_name}</span>
+                                      {message.attachment_size && (
+                                        <span className="text-xs opacity-70">
+                                          ({(message.attachment_size / 1024).toFixed(1)} KB)
+                                        </span>
+                                      )}
+                                    </div>
+                                    {message.attachment_url && (
+                                      <a
+                                        href={message.attachment_url}
+                                        download={message.attachment_name}
+                                        className="text-xs underline mt-1 block"
+                                      >
+                                        Download
+                                      </a>
+                                    )}
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -350,7 +441,74 @@ export default function CommunityDetail() {
 
                   {/* Message Input */}
                   <form onSubmit={handleSendMessage} className="p-6 border-t border-gray-200">
-                    <div className="flex gap-3">
+                    {(attachmentType === 'file' && attachmentFile) && (
+                      <div className="mb-3 p-3 bg-blue-50 rounded-lg flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Paperclip className="w-4 h-4 text-blue-600" />
+                          <span className="text-sm text-blue-900">{attachmentFile.name}</span>
+                          <span className="text-xs text-blue-600">
+                            ({(attachmentFile.size / 1024).toFixed(1)} KB)
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAttachmentType(null);
+                            setAttachmentFile(null);
+                          }}
+                          className="text-blue-600 hover:text-blue-800"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
+                    {attachmentType === 'link' && (
+                      <div className="mb-3">
+                        <input
+                          type="url"
+                          value={attachmentLink}
+                          onChange={(e) => setAttachmentLink(e.target.value)}
+                          placeholder="Paste a link..."
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAttachmentType(null);
+                            setAttachmentLink('');
+                          }}
+                          className="mt-2 text-sm text-gray-600 hover:text-gray-800"
+                        >
+                          Remove link
+                        </button>
+                      </div>
+                    )}
+                    <div className="flex gap-2">
+                      <div className="flex gap-2">
+                        <label className="cursor-pointer p-2 hover:bg-gray-100 rounded-lg transition-colors">
+                          <Paperclip className="w-5 h-5 text-gray-600" />
+                          <input
+                            type="file"
+                            className="hidden"
+                            onChange={handleFileSelect}
+                            disabled={sendingMessage}
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (attachmentType === 'link') {
+                              setAttachmentType(null);
+                              setAttachmentLink('');
+                            } else {
+                              setAttachmentType('link');
+                            }
+                          }}
+                          className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                        >
+                          <LinkIcon className="w-5 h-5 text-gray-600" />
+                        </button>
+                      </div>
                       <input
                         type="text"
                         value={newMessage}
@@ -362,7 +520,7 @@ export default function CommunityDetail() {
                       />
                       <button
                         type="submit"
-                        disabled={!newMessage.trim() || sendingMessage}
+                        disabled={(!newMessage.trim() && !attachmentFile && !attachmentLink.trim()) || sendingMessage}
                         className="px-6 py-3 bg-gradient-to-r from-primary to-accent text-white font-semibold rounded-lg hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                       >
                         {sendingMessage ? (

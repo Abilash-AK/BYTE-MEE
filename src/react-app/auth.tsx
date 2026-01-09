@@ -6,6 +6,7 @@ export type AppUser = {
   name: string;
   picture?: string | null;
   given_name?: string;
+  tech_stack?: string | null;
 };
 
 interface AuthContextValue {
@@ -41,6 +42,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             name: data.name || data.email,
             picture: data.picture || null,
             given_name: data.given_name || deriveGivenName(data.name || data.email),
+            tech_stack: data.tech_stack || null,
           });
         } else {
           setUser(null);
@@ -94,6 +96,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         name: data.user.name,
         picture: data.user.picture || null,
         given_name: data.user.given_name || deriveGivenName(data.user.name),
+        tech_stack: data.user.tech_stack || null,
       });
     }
   };

@@ -1,6 +1,6 @@
 import { useNavigate, useLocation } from 'react-router';
 import { useAuth } from '@/react-app/auth';
-import { Code2, Sparkles, Users, LogOut, Plus, Search, MessageCircle, Globe, User } from 'lucide-react';
+import { Code2, Sparkles, Users, LogOut, Plus, Search, MessageCircle, Globe, User, Brain } from 'lucide-react';
 
 export default function Sidebar() {
   const { user, logout } = useAuth();
@@ -12,6 +12,7 @@ export default function Sidebar() {
   const navItems = [
     { path: '/dashboard', icon: Sparkles, label: 'Dashboard' },
     { path: '/profile', icon: User, label: 'My Profile' },
+    { path: '/challenges', icon: Brain, label: 'Coding Challenges' },
     { path: '/pods/my', icon: Users, label: 'My Pods' },
     { path: '/pods/browse', icon: Search, label: 'Browse Pods' },
     { path: '/pods/create', icon: Plus, label: 'Create Pod' },

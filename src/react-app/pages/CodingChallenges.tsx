@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Sparkles, Brain, ShieldCheck, Send, Loader2, Lightbulb } from 'lucide-react';
+import Editor from '@monaco-editor/react';
 import Sidebar from '@/react-app/components/Sidebar';
 import { useAuth } from '@/react-app/auth';
 import { useOnboardingCheck } from '@/react-app/hooks/useOnboardingCheck';
@@ -135,7 +136,7 @@ export default function CodingChallenges() {
       setEvaluation({ status: 'idle' });
       setAiAssist({ status: 'idle' });
     }
-  }, [activeChallenge?.id]);
+  }, [activeChallenge]);
 
   if (isPending || checking || !user) {
     return (
@@ -272,7 +273,7 @@ export default function CodingChallenges() {
             <div className="bg-white rounded-xl shadow-md px-4 py-3 flex items-center gap-3 border border-primary/10">
               <Brain className="w-8 h-8 text-primary" />
               <div>
-                <p className="text-sm text-gray-500">AI Mentor powered by Gemini</p>
+                <p className="text-sm text-gray-500">AI Mentor powered by Groq</p>
                 <p className="text-base font-semibold text-gray-900">Instant feedback & guidance</p>
               </div>
             </div>
@@ -367,13 +368,25 @@ export default function CodingChallenges() {
                     <label htmlFor="code-editor" className="text-sm font-semibold text-gray-700 mb-2 block">
                       Your solution
                     </label>
-                    <textarea
-                      id="code-editor"
-                      value={codeDraft}
-                      onChange={(event) => setCodeDraft(event.target.value)}
-                      className="w-full min-h-[260px] font-mono text-sm bg-gray-900 text-gray-100 rounded-xl p-4 focus:outline-none focus:ring-2 focus:ring-primary"
-                      spellCheck={false}
-                    />
+                    <div className="border-2 border-gray-200 rounded-xl overflow-hidden focus-within:border-primary">
+                      <Editor
+                        height="400px"
+                        language={activeChallenge.language === 'python' ? 'python' : activeChallenge.language === 'typescript' ? 'typescript' : 'javascript'}
+                        value={codeDraft}
+                        onChange={(value) => setCodeDraft(value || '')}
+                        theme="vs-dark"
+                        options={{
+                          minimap: { enabled: false },
+                          fontSize: 14,
+                          lineNumbers: 'on',
+                          roundedSelection: false,
+                          scrollBeyondLastLine: false,
+                          automaticLayout: true,
+                          tabSize: 2,
+                          wordWrap: 'on',
+                        }}
+                      />
+                    </div>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-3">

@@ -118,6 +118,111 @@ export function ClickCounter() {
     ],
     aiRubric: 'Reward solutions that trim whitespace, ignore empty segments, and correctly handle blank input.',
   },
+  {
+    id: 'js-find-max',
+    title: 'Find the maximum number',
+    skill: 'JavaScript',
+    difficulty: 'beginner',
+    summary: 'Write a function that finds the largest number in an array.',
+    prompt: 'Create a function `findMax(numbers: number[]): number` that returns the largest number from the array. Return 0 if the array is empty.',
+    language: 'javascript',
+    estimatedTime: '5 min',
+    starterCode: `function findMax(numbers) {
+  // TODO: find and return the maximum number
+  return 0;
+}
+`,
+    acceptanceCriteria: [
+      'Return the largest number in the array.',
+      'Return 0 if the array is empty.',
+      'Handle negative numbers correctly.',
+    ],
+    testCases: [
+      { description: 'basic array', input: '[1, 5, 3, 9, 2]', expected: '9' },
+      { description: 'with negatives', input: '[-1, -5, -3]', expected: '-1' },
+      { description: 'empty array', input: '[]', expected: '0' },
+    ],
+    aiRubric: 'Check for correct maximum finding logic and proper handling of edge cases like empty arrays.',
+  },
+  {
+    id: 'js-reverse-string',
+    title: 'Reverse a string',
+    skill: 'JavaScript',
+    difficulty: 'beginner',
+    summary: 'Write a function that reverses a given string.',
+    prompt: 'Create a function `reverseString(str: string): string` that returns the reversed version of the input string.',
+    language: 'javascript',
+    estimatedTime: '5 min',
+    starterCode: `function reverseString(str) {
+  // TODO: return the reversed string
+  return str;
+}
+`,
+    acceptanceCriteria: [
+      'Return the string with characters in reverse order.',
+      'Handle empty strings (return empty string).',
+      'Preserve all characters including spaces.',
+    ],
+    testCases: [
+      { description: 'basic string', input: '"hello"', expected: '"olleh"' },
+      { description: 'with spaces', input: '"hello world"', expected: '"dlrow olleh"' },
+      { description: 'empty string', input: '""', expected: '""' },
+    ],
+    aiRubric: 'Verify that the string is correctly reversed character by character.',
+  },
+  {
+    id: 'python-sum-list',
+    title: 'Sum all numbers in a list',
+    skill: 'Python',
+    difficulty: 'beginner',
+    summary: 'Write a function that adds up all numbers in a list.',
+    prompt: 'Implement `sum_list(numbers: list[int]) -> int` that returns the sum of all numbers in the list. Return 0 for empty lists.',
+    language: 'python',
+    estimatedTime: '5 min',
+    starterCode: `def sum_list(numbers):
+    """Return the sum of all numbers in the list."""
+    # TODO: implement
+    return 0
+`,
+    acceptanceCriteria: [
+      'Return the sum of all numbers.',
+      'Return 0 if the list is empty.',
+      'Handle negative numbers correctly.',
+    ],
+    testCases: [
+      { description: 'basic list', input: '[1, 2, 3, 4]', expected: '10' },
+      { description: 'with negatives', input: '[-1, 2, -3]', expected: '-2' },
+      { description: 'empty list', input: '[]', expected: '0' },
+    ],
+    aiRubric: 'Check for correct summation logic and proper handling of edge cases.',
+  },
+  {
+    id: 'js-check-even',
+    title: 'Check if number is even',
+    skill: 'JavaScript',
+    difficulty: 'beginner',
+    summary: 'Write a simple function that checks if a number is even.',
+    prompt: 'Create a function `isEven(num: number): boolean` that returns true if the number is even, false otherwise.',
+    language: 'javascript',
+    estimatedTime: '3 min',
+    starterCode: `function isEven(num) {
+  // TODO: return true if num is even, false otherwise
+  return false;
+}
+`,
+    acceptanceCriteria: [
+      'Return true for even numbers (0, 2, 4, 6, etc.).',
+      'Return false for odd numbers (1, 3, 5, etc.).',
+      'Handle negative numbers correctly.',
+    ],
+    testCases: [
+      { description: 'even number', input: '4', expected: 'true' },
+      { description: 'odd number', input: '5', expected: 'false' },
+      { description: 'zero', input: '0', expected: 'true' },
+      { description: 'negative even', input: '-2', expected: 'true' },
+    ],
+    aiRubric: 'Verify correct use of modulo operator to check even/odd status.',
+  },
 ];
 
 export const supportedChallengeSkills = Array.from(
