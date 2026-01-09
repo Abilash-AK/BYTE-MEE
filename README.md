@@ -15,11 +15,9 @@ WORKING LINK: https://colearn-app.abilashkumar290.workers.dev/
 - **Authentication**: Google OAuth and GitHub integration for seamless signup
 
 ### Key Highlights
-- ✅ 150+ features across 20 major categories
 - ✅ Real-time collaboration tools
 - ✅ AI transparency and usage logging
 - ✅ Comprehensive skill tracking and verification
-- ✅ Mobile-responsive design
 - ✅ Cloudflare Workers backend with D1 database
 
 ## 🛠️ Tech Stack
