@@ -1,0 +1,3 @@
+ALTER TABLE pods ADD COLUMN city TEXT;
+ALTER TABLE pods ADD COLUMN location_lat REAL;
+ALTER TABLE pods ADD COLUMN location_lng REAL;
