@@ -44,6 +44,7 @@ export default function BrowsePods() {
   const [showFilters, setShowFilters] = useState(false);
   const [detectingLocation, setDetectingLocation] = useState(false);
   const [locationDetected, setLocationDetected] = useState(false);
+  const [applyingPodId, setApplyingPodId] = useState<number | null>(null);
 
   // Auto-detect user's location for matchmaking
   const detectUserLocation = useCallback(() => {
@@ -229,6 +230,46 @@ export default function BrowsePods() {
     });
     return Array.from(techs).sort();
   }, [pods]);
+
+  const handleApplyToPod = async (podId: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setApplyingPodId(podId);
+    try {
+      const response = await fetch(`/api/pods/${podId}/apply`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          why_interested: 'I am interested in joining this pod to collaborate and learn!',
+          skills: user?.tech_stack || '',
+        }),
+      });
+
+      if (response.ok) {
+        alert('Application submitted successfully! The pod creator will review your application.');
+        // Navigate to pod detail page
+        navigate(`/pods/${podId}`);
+      } else {
+        const errorData = await response.json().catch(() => ({ error: 'Failed to apply' }));
+        if (errorData.error?.includes('already applied')) {
+          // If already applied, just navigate to pod detail
+          navigate(`/pods/${podId}`);
+        } else if (errorData.error?.includes('already a member')) {
+          // If already a member, navigate to pod detail
+          navigate(`/pods/${podId}`);
+        } else {
+          alert(errorData.error || 'Failed to apply to pod. Please try again.');
+        }
+      }
+    } catch (error) {
+      console.error('Failed to apply to pod:', error);
+      alert('Failed to apply to pod. Please check your connection and try again.');
+    } finally {
+      setApplyingPodId(null);
+    }
+  };
 
   // Filter and sort pods
   const filteredAndSortedPods = useMemo(() => {
@@ -520,13 +561,18 @@ export default function BrowsePods() {
                       
                       {!isCreator && !isFull && (
                         <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigate(`/pods/${pod.id}`);
-                          }}
-                          className="px-4 py-2 bg-secondary text-white text-sm font-semibold rounded-lg hover:bg-secondary/90 transition-colors"
+                          onClick={(e) => handleApplyToPod(pod.id, e)}
+                          disabled={applyingPodId === pod.id}
+                          className="px-4 py-2 bg-secondary text-white text-sm font-semibold rounded-lg hover:bg-secondary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                         >
-                          Apply
+                          {applyingPodId === pod.id ? (
+                            <>
+                              <Sparkles className="w-4 h-4 animate-spin" />
+                              Applying...
+                            </>
+                          ) : (
+                            'Apply'
+                          )}
                         </button>
                       )}
                     </div>

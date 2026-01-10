@@ -1306,24 +1306,24 @@ export default function PodDetail() {
                   const skillsList = applicantSkills ? applicantSkills.split(',').map(s => s.trim()).filter(Boolean) : [];
                   
                   return (
-                    <div key={application.id} className="p-6 bg-gray-50 rounded-lg">
-                      <div className="flex items-start gap-4 mb-4">
-                        {application.user_picture ? (
-                          <img
-                            src={application.user_picture}
-                            alt={application.user_name}
-                            className="w-12 h-12 rounded-full"
-                          />
-                        ) : (
-                          <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center">
-                            <span className="text-primary font-bold">
-                              {application.user_name.charAt(0).toUpperCase()}
-                            </span>
-                          </div>
-                        )}
-                        <div className="flex-1">
+                  <div key={application.id} className="p-6 bg-gray-50 rounded-lg">
+                    <div className="flex items-start gap-4 mb-4">
+                      {application.user_picture ? (
+                        <img
+                          src={application.user_picture}
+                          alt={application.user_name}
+                          className="w-12 h-12 rounded-full"
+                        />
+                      ) : (
+                        <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center">
+                          <span className="text-primary font-bold">
+                            {application.user_name.charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">
-                            <p className="font-semibold text-gray-900">{application.user_name}</p>
+                        <p className="font-semibold text-gray-900">{application.user_name}</p>
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -1336,9 +1336,9 @@ export default function PodDetail() {
                               View Profile →
                             </button>
                           </div>
-                          <p className="text-sm text-gray-500">{application.user_email}</p>
-                        </div>
+                        <p className="text-sm text-gray-500">{application.user_email}</p>
                       </div>
+                    </div>
                       
                       <div className="mb-4">
                         <p className="text-sm font-semibold text-gray-900 mb-2">Skills:</p>
@@ -1357,29 +1357,29 @@ export default function PodDetail() {
                           <p className="text-sm text-gray-500">No skills listed</p>
                         )}
                       </div>
-                      
-                      <div className="mb-4">
-                        <p className="text-sm font-semibold text-gray-900 mb-1">Why interested:</p>
-                        <p className="text-gray-700">{application.why_interested}</p>
-                      </div>
-
-                      <div className="flex gap-3">
-                        <button
-                          onClick={() => handleAcceptApplication(application.id)}
-                          className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-colors"
-                        >
-                          <Check className="w-4 h-4" />
-                          Accept
-                        </button>
-                        <button
-                          onClick={() => handleRejectApplication(application.id)}
-                          className="flex items-center gap-2 px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300 transition-colors"
-                        >
-                          <X className="w-4 h-4" />
-                          Reject
-                        </button>
-                      </div>
+                    
+                    <div className="mb-4">
+                      <p className="text-sm font-semibold text-gray-900 mb-1">Why interested:</p>
+                      <p className="text-gray-700">{application.why_interested}</p>
                     </div>
+
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => handleAcceptApplication(application.id)}
+                        className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-colors"
+                      >
+                        <Check className="w-4 h-4" />
+                        Accept
+                      </button>
+                      <button
+                        onClick={() => handleRejectApplication(application.id)}
+                        className="flex items-center gap-2 px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300 transition-colors"
+                      >
+                        <X className="w-4 h-4" />
+                        Reject
+                      </button>
+                    </div>
+                  </div>
                   );
                 })}
               </div>

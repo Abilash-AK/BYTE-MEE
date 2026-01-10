@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router';
 import { useAuth } from '@/react-app/auth';
 import { useOnboardingCheck } from '@/react-app/hooks/useOnboardingCheck';
 import Sidebar from '@/react-app/components/Sidebar';
-import { Sparkles, Users, UserPlus, UserMinus, ArrowLeft, Send, MessageCircle, Paperclip, Link as LinkIcon, X } from 'lucide-react';
+import { Sparkles, Users, UserPlus, UserMinus, ArrowLeft, Send, MessageCircle, Paperclip, Link as LinkIcon, X, MessageSquare } from 'lucide-react';
 
 interface Community {
   id: number;
@@ -18,6 +18,7 @@ interface Community {
 
 interface Member {
   id: number;
+  user_id: string;
   user_name: string;
   user_email: string;
   user_picture: string | null;
@@ -297,32 +298,46 @@ export default function CommunityDetail() {
                   </p>
                 ) : (
                   <div className="space-y-3 max-h-96 overflow-y-auto">
-                    {community.members.map((member) => (
-                      <div
-                        key={member.id}
-                        className="flex items-center gap-3 p-3 rounded-lg border border-gray-100 hover:border-warmth/30 transition-all"
-                      >
-                        {member.user_picture ? (
-                          <img
-                            src={member.user_picture}
-                            alt={member.user_name}
-                            className="w-10 h-10 rounded-full border-2 border-gray-200"
-                          />
-                        ) : (
-                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-white font-bold text-sm">
-                            {member.user_name.charAt(0).toUpperCase()}
+                    {community.members.map((member) => {
+                      const memberUserId = member.user_id;
+                      const isCurrentUser = memberUserId === user?.id;
+                      
+                      return (
+                        <div
+                          key={member.id}
+                          className="flex items-center gap-3 p-3 rounded-lg border border-gray-100 hover:border-warmth/30 transition-all"
+                        >
+                          {member.user_picture ? (
+                            <img
+                              src={member.user_picture}
+                              alt={member.user_name}
+                              className="w-10 h-10 rounded-full border-2 border-gray-200"
+                            />
+                          ) : (
+                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-white font-bold text-sm">
+                              {member.user_name.charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-gray-900 text-sm truncate">
+                              {member.user_name}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              {new Date(member.joined_at).toLocaleDateString()}
+                            </p>
                           </div>
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-gray-900 text-sm truncate">
-                            {member.user_name}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            {new Date(member.joined_at).toLocaleDateString()}
-                          </p>
+                          {!isCurrentUser && (
+                            <button
+                              onClick={() => navigate(`/messages/${memberUserId}`)}
+                              className="p-2 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors flex-shrink-0"
+                              title="Send message"
+                            >
+                              <MessageSquare className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>

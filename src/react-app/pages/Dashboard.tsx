@@ -23,6 +23,8 @@ interface DailyPod {
     team_size: number;
     duration: string;
     isMember: boolean;
+    hasApplied?: boolean;
+    applicationStatus?: string | null;
     hoursRemaining: number;
     minutesRemaining: number;
     timeRemaining: string;
@@ -69,10 +71,11 @@ export default function Dashboard() {
   };
 
   const handleJoinPod = async () => {
-    if (!dailyPod?.pod || dailyPod.pod.isMember) {
-      if (dailyPod?.pod) {
-        navigate(`/pods/${dailyPod.pod.id}`);
-      }
+    if (!dailyPod?.pod) return;
+
+    // If already a member or has applied, navigate to pod detail
+    if (dailyPod.pod.isMember || dailyPod.pod.hasApplied) {
+      navigate(`/pods/${dailyPod.pod.id}`);
       return;
     }
 
@@ -91,14 +94,19 @@ export default function Dashboard() {
       });
 
       if (response.ok) {
+        // Refresh dashboard data to update button state
+        await fetchDashboardData();
+        // Show success message
+        alert('Application submitted successfully! The pod creator will review your application.');
+        // Navigate to pod detail page
         navigate(`/pods/${dailyPod.pod.id}`);
       } else {
-        const error = await response.json();
-        alert(error.error || 'Failed to join pod');
+        const errorData = await response.json().catch(() => ({ error: 'Failed to join pod' }));
+        alert(errorData.error || 'Failed to join pod. Please try again.');
       }
     } catch (error) {
       console.error('Failed to join pod:', error);
-      alert('Failed to join pod. Please try again.');
+      alert('Failed to join pod. Please check your connection and try again.');
     } finally {
       setJoiningPod(false);
     }
@@ -212,14 +220,16 @@ export default function Dashboard() {
 
                 <button 
                   onClick={handleJoinPod}
-                  disabled={joiningPod || dailyPod.pod.isMember}
+                  disabled={joiningPod}
                   className="w-full md:w-auto px-8 py-4 bg-gradient-to-r from-primary to-accent text-white font-semibold rounded-lg hover:shadow-xl hover:shadow-primary/30 transition-all hover:scale-105 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Sparkles className="w-5 h-5" />
                   {joiningPod 
-                    ? 'Joining...' 
+                    ? 'Applying...' 
                     : dailyPod.pod.isMember 
                     ? 'View Pod' 
+                    : dailyPod.pod.hasApplied
+                    ? 'View Application'
                     : 'Join Now'}
                 </button>
               </div>

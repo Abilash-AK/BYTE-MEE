@@ -1139,6 +1139,7 @@ const MCQ_CORRECT_ANSWERS: Record<number, string> = {
 const validateMcqSchema = z.object({
   answers: z.record(z.string()),
   questionIds: z.array(z.number()),
+  skill: z.string().optional(), // Skill being verified
 });
 
 app.post(
@@ -1146,8 +1147,9 @@ app.post(
   authMiddleware,
   zValidator("json", validateMcqSchema),
   async (c) => {
+    const user = c.get("user")!;
     const body = c.req.valid("json");
-    const { answers, questionIds } = body;
+    const { answers, questionIds, skill } = body;
 
     let correctCount = 0;
     const totalQuestions = questionIds.length;
@@ -1165,12 +1167,43 @@ app.post(
     const requiredCorrect = Math.ceil(totalQuestions * 0.7); // Need 70% correct
     const passed = correctCount >= requiredCorrect;
 
+    // If passed and skill is provided, mark Level 1 as complete
+    if (passed && skill) {
+      try {
+        // First try to update if record exists
+        const updateResult = await c.env.DB.prepare(
+          `UPDATE skill_verifications 
+           SET level_1_completed = 1,
+               level_1_completed_at = CURRENT_TIMESTAMP,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE user_id = ? AND skill = ?`
+        )
+          .bind(user.id, skill)
+          .run();
+
+        // If no rows were updated, insert new record
+        if (updateResult.meta.changes === 0) {
+          await c.env.DB.prepare(
+            `INSERT INTO skill_verifications (user_id, skill, level_1_completed, level_1_completed_at)
+             VALUES (?, ?, 1, CURRENT_TIMESTAMP)`
+          )
+            .bind(user.id, skill)
+            .run();
+        }
+      } catch (error) {
+        console.error('Error updating skill verification:', error);
+        // Don't fail the request if verification update fails
+      }
+    }
+
     return c.json({
       success: passed,
       score: correctCount,
       total: totalQuestions,
       message: passed
-        ? `Excellent! You got ${correctCount} out of ${totalQuestions} correct. You're ready to start collaborating!`
+        ? skill
+          ? `Level 1 Complete! You got ${correctCount} out of ${totalQuestions} correct. Now proceed to the coding test.`
+          : `Excellent! You got ${correctCount} out of ${totalQuestions} correct. You're ready to start collaborating!`
         : `You scored ${correctCount} out of ${totalQuestions}. You need at least ${requiredCorrect} correct answers to pass. Review the questions and try again!`,
     });
   }
@@ -2476,6 +2509,372 @@ app.post(
   }
 );
 
+// Direct Messages API endpoints
+
+// Get all conversations for the current user
+app.get("/api/messages/conversations", authMiddleware, async (c) => {
+  try {
+    const user = c.get("user")!;
+
+    // Get all messages where user is sender or receiver
+    const { results: allMessages } = await c.env.DB.prepare(
+      `SELECT * FROM direct_messages 
+       WHERE sender_id = ? OR receiver_id = ?
+       ORDER BY created_at DESC`
+    )
+      .bind(user.id, user.id)
+      .all();
+
+    // Group by conversation partner and get latest message
+    const conversationsMap = new Map<string, any>();
+    
+    if (allMessages) {
+      for (const msg of allMessages) {
+        const otherUserId = msg.sender_id === user.id ? msg.receiver_id : msg.sender_id;
+        const otherUserName = msg.sender_id === user.id ? msg.receiver_name : msg.sender_name;
+        const otherUserPicture = msg.sender_id === user.id ? msg.receiver_picture : msg.sender_picture;
+        
+        if (!conversationsMap.has(otherUserId)) {
+          conversationsMap.set(otherUserId, {
+            other_user_id: otherUserId,
+            other_user_name: otherUserName,
+            other_user_picture: otherUserPicture,
+            last_message: msg.message,
+            last_message_at: msg.created_at,
+            unread_count: 0,
+          });
+        }
+      }
+
+      // Count unread messages for each conversation
+      for (const [otherUserId, conv] of conversationsMap.entries()) {
+        const unreadResult = await c.env.DB.prepare(
+          `SELECT COUNT(*) as count FROM direct_messages 
+           WHERE sender_id = ? AND receiver_id = ? AND is_read = 0`
+        )
+          .bind(otherUserId, user.id)
+          .first<{ count: number }>();
+        
+        conv.unread_count = unreadResult?.count || 0;
+      }
+    }
+
+    const conversations = Array.from(conversationsMap.values());
+    conversations.sort((a, b) => 
+      new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime()
+    );
+
+    return c.json(conversations);
+  } catch (error: any) {
+    console.error('Error fetching conversations:', error);
+    // If table doesn't exist, return empty array
+    if (error?.message?.includes('no such table')) {
+      return c.json([]);
+    }
+    return c.json({ error: "Failed to fetch conversations" }, 500);
+  }
+});
+
+// Get messages between current user and another user
+app.get("/api/messages/:userId", authMiddleware, async (c) => {
+  try {
+    const user = c.get("user")!;
+    const otherUserId = c.req.param("userId");
+
+    const { results: messages } = await c.env.DB.prepare(
+      `SELECT * FROM direct_messages 
+       WHERE (sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?)
+       ORDER BY created_at ASC`
+    )
+      .bind(user.id, otherUserId, otherUserId, user.id)
+      .all();
+
+    // Mark messages as read
+    if (messages && messages.length > 0) {
+      await c.env.DB.prepare(
+        `UPDATE direct_messages 
+         SET is_read = 1 
+         WHERE sender_id = ? AND receiver_id = ? AND is_read = 0`
+      )
+        .bind(otherUserId, user.id)
+        .run();
+    }
+
+    return c.json(messages || []);
+  } catch (error: any) {
+    console.error('Error fetching messages:', error);
+    // If table doesn't exist, return empty array
+    if (error?.message?.includes('no such table')) {
+      return c.json([]);
+    }
+    return c.json({ error: "Failed to fetch messages" }, 500);
+  }
+});
+
+// Send a direct message
+const sendDirectMessageSchema = z.object({
+  message: z.string().min(1).max(2000),
+  receiver_id: z.string().min(1),
+});
+
+app.post(
+  "/api/messages/send",
+  authMiddleware,
+  zValidator("json", sendDirectMessageSchema),
+  async (c) => {
+    try {
+      const user = c.get("user")!;
+      const body = c.req.valid("json");
+
+      // Get receiver's profile info
+      const receiverProfile = await c.env.DB.prepare(
+        "SELECT name, email FROM user_profiles WHERE user_id = ?"
+      )
+        .bind(body.receiver_id)
+        .first<{ name?: string | null; email?: string | null } | undefined>();
+
+      if (!receiverProfile) {
+        return c.json({ error: "Receiver not found" }, 404);
+      }
+
+      // Get sender's profile info
+      const senderProfile = await c.env.DB.prepare(
+        "SELECT name, email FROM user_profiles WHERE user_id = ?"
+      )
+        .bind(user.id)
+        .first<{ name?: string | null; email?: string | null } | undefined>();
+
+      const result = await c.env.DB.prepare(
+        `INSERT INTO direct_messages 
+         (sender_id, receiver_id, sender_name, sender_picture, receiver_name, receiver_picture, message)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      )
+        .bind(
+          user.id,
+          body.receiver_id,
+          senderProfile?.name || user.name || user.email,
+          user.picture || null,
+          receiverProfile.name || receiverProfile.email || "Unknown",
+          null, // receiver_picture not stored in user_profiles
+          body.message
+        )
+        .run();
+
+      const message = await c.env.DB.prepare(
+        "SELECT * FROM direct_messages WHERE id = ?"
+      )
+        .bind(result.meta.last_row_id)
+        .first();
+
+      return c.json(message, 201);
+    } catch (error: any) {
+      console.error('Error sending message:', error);
+      const errorMessage = error?.message || String(error);
+      if (errorMessage?.includes('no such table')) {
+        return c.json({ error: "Direct messaging is not available. Please run database migrations." }, 500);
+      }
+      if (errorMessage?.includes('NOT NULL constraint')) {
+        return c.json({ error: "Missing required information. Please try again." }, 400);
+      }
+      return c.json({ error: `Failed to send message: ${errorMessage}` }, 500);
+    }
+  }
+);
+
+// Get unread message count
+app.get("/api/messages/unread-count", authMiddleware, async (c) => {
+  try {
+    const user = c.get("user")!;
+
+    const result = await c.env.DB.prepare(
+      "SELECT COUNT(*) as count FROM direct_messages WHERE receiver_id = ? AND is_read = 0"
+    )
+      .bind(user.id)
+      .first<{ count: number }>();
+
+    return c.json({ unreadCount: result?.count || 0 });
+  } catch (error: any) {
+    console.error('Error fetching unread count:', error);
+    // If table doesn't exist, return 0
+    if (error?.message?.includes('no such table')) {
+      return c.json({ unreadCount: 0 });
+    }
+    return c.json({ unreadCount: 0 });
+  }
+});
+
+// Skill Verification API endpoints
+
+// Get skill verification status
+app.get("/api/skills/:skill/verification", authMiddleware, async (c) => {
+  try {
+    const user = c.get("user")!;
+    const skill = c.req.param("skill");
+
+    const verification = await c.env.DB.prepare(
+      "SELECT * FROM skill_verifications WHERE user_id = ? AND skill = ?"
+    )
+      .bind(user.id, skill)
+      .first();
+
+    return c.json(verification || {
+      user_id: user.id,
+      skill,
+      level_1_completed: 0,
+      level_2_completed: 0,
+      level_3_completed: 0,
+    });
+  } catch (error: any) {
+    console.error('Error fetching skill verification:', error);
+    return c.json({ error: "Failed to fetch verification status" }, 500);
+  }
+});
+
+// Submit Level 2 coding test
+const submitCodingTestSchema = z.object({
+  skill: z.string().min(1),
+  code: z.string().min(1),
+  language: z.string().min(1),
+});
+
+app.post(
+  "/api/skills/coding-test",
+  authMiddleware,
+  zValidator("json", submitCodingTestSchema),
+  async (c) => {
+    try {
+      const user = c.get("user")!;
+      const body = c.req.valid("json");
+
+      // Check if Level 1 is completed
+      const verification = await c.env.DB.prepare(
+        "SELECT * FROM skill_verifications WHERE user_id = ? AND skill = ?"
+      )
+        .bind(user.id, body.skill)
+        .first();
+
+      if (!verification || !verification.level_1_completed) {
+        return c.json({ error: "You must complete Level 1 (Quiz) first" }, 400);
+      }
+
+      // Simple compilation check - validate code syntax
+      let compiles = false;
+      let errorMessage = '';
+
+      try {
+        // Basic syntax validation based on language
+        if (body.language === 'javascript' || body.language === 'typescript') {
+          // Check for basic syntax errors
+          if (body.code.includes('function') || body.code.includes('const') || body.code.includes('let') || body.code.includes('var')) {
+            // Check for balanced braces
+            const openBraces = (body.code.match(/{/g) || []).length;
+            const closeBraces = (body.code.match(/}/g) || []).length;
+            const openParens = (body.code.match(/\(/g) || []).length;
+            const closeParens = (body.code.match(/\)/g) || []).length;
+            
+            if (openBraces === closeBraces && openParens === closeParens && body.code.trim().length > 10) {
+              compiles = true;
+            } else {
+              errorMessage = 'Code has syntax errors (unbalanced braces or parentheses)';
+            }
+          } else {
+            errorMessage = 'Code must contain at least one function or variable declaration';
+          }
+        } else if (body.language === 'python') {
+          // Basic Python syntax check
+          if (body.code.includes('def ') || body.code.includes('class ') || body.code.includes('=')) {
+            // Check for proper indentation and basic structure
+            const lines = body.code.split('\n').filter(l => l.trim());
+            if (lines.length >= 2 && body.code.trim().length > 10) {
+              compiles = true;
+            } else {
+              errorMessage = 'Code must have at least 2 lines of meaningful code';
+            }
+          } else {
+            errorMessage = 'Code must contain at least one function or variable';
+          }
+        } else {
+          // For other languages, basic length check
+          if (body.code.trim().length > 20) {
+            compiles = true;
+          } else {
+            errorMessage = 'Code is too short or empty';
+          }
+        }
+      } catch (err: any) {
+        errorMessage = err.message || 'Compilation check failed';
+      }
+
+      if (!compiles) {
+        return c.json({
+          success: false,
+          compiles: false,
+          error: errorMessage || 'Code does not compile. Please fix syntax errors.',
+        });
+      }
+
+      // Mark Level 2 as complete - use INSERT OR REPLACE for SQLite compatibility
+      try {
+        // First try to update if record exists
+        const updateResult = await c.env.DB.prepare(
+          `UPDATE skill_verifications 
+           SET level_2_completed = 1,
+               level_2_completed_at = CURRENT_TIMESTAMP,
+               level_2_code = ?,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE user_id = ? AND skill = ?`
+        )
+          .bind(body.code, user.id, body.skill)
+          .run();
+
+        // If no rows were updated, insert new record
+        if (updateResult.meta.changes === 0) {
+          await c.env.DB.prepare(
+            `INSERT INTO skill_verifications (user_id, skill, level_1_completed, level_2_completed, level_2_completed_at, level_2_code)
+             VALUES (?, ?, 1, 1, CURRENT_TIMESTAMP, ?)`
+          )
+            .bind(user.id, body.skill, body.code)
+            .run();
+        }
+
+        // Auto-complete Level 3 when Level 2 is done
+        await c.env.DB.prepare(
+          `UPDATE skill_verifications 
+           SET level_3_completed = 1,
+               level_3_completed_at = CURRENT_TIMESTAMP,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE user_id = ? AND skill = ?`
+        )
+          .bind(user.id, body.skill)
+          .run();
+      } catch (dbError: any) {
+        console.error('Database error in coding test submission:', dbError);
+        throw new Error(`Database error: ${dbError.message || String(dbError)}`);
+      }
+
+      return c.json({
+        success: true,
+        compiles: true,
+        message: 'Level 2 Complete! Your code compiles successfully. Skill verification accomplished!',
+      });
+    } catch (error: any) {
+      console.error('Error submitting coding test:', error);
+      const errorMessage = error?.message || String(error);
+      
+      // Check if table doesn't exist
+      if (errorMessage?.includes('no such table') || errorMessage?.includes('skill_verifications')) {
+        return c.json({ 
+          error: "Database migration required. Please run: wrangler d1 migrations apply colearn-db --remote" 
+        }, 500);
+      }
+      
+      return c.json({ 
+        error: `Failed to submit coding test: ${errorMessage}` 
+      }, 500);
+    }
+  }
+);
+
 // Dashboard API endpoints
 
 // Get dashboard stats (challenges completed, coding buddies, streak)
@@ -2594,6 +2993,13 @@ app.get("/api/dashboard/daily-pod", authMiddleware, async (c) => {
     .bind(pod.id, user.id)
     .first();
 
+  // Check if user has already applied
+  const existingApplication = await c.env.DB.prepare(
+    "SELECT status FROM pod_applications WHERE pod_id = ? AND user_id = ?"
+  )
+    .bind(pod.id, user.id)
+    .first<{ status?: string } | undefined>();
+
   // Calculate time remaining until deadline
   let hoursRemaining = 24;
   let minutesRemaining = 0;
@@ -2610,6 +3016,8 @@ app.get("/api/dashboard/daily-pod", authMiddleware, async (c) => {
     pod: {
       ...pod,
       isMember: !!isMember,
+      hasApplied: !!existingApplication,
+      applicationStatus: existingApplication?.status || null,
       hoursRemaining,
       minutesRemaining,
       timeRemaining: `${hoursRemaining}:${minutesRemaining.toString().padStart(2, '0')}`,

@@ -13,6 +13,7 @@ import CommunityDetailPage from "@/react-app/pages/CommunityDetail";
 import OnboardingPage from "@/react-app/pages/Onboarding";
 import ProfilePage from "@/react-app/pages/Profile";
 import CodingChallengesPage from "@/react-app/pages/CodingChallenges";
+import DirectMessagesPage from "@/react-app/pages/DirectMessages";
 
 export default function App() {
   return (
@@ -33,6 +34,8 @@ export default function App() {
           <Route path="/communities" element={<CommunitiesPage />} />
           <Route path="/communities/my" element={<MyCommunitiesPage />} />
           <Route path="/communities/:id" element={<CommunityDetailPage />} />
+          <Route path="/messages/:userId?" element={<DirectMessagesPage />} />
+          <Route path="/messages" element={<DirectMessagesPage />} />
         </Routes>
       </Router>
     </AuthProvider>

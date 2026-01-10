@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useAuth } from '@/react-app/auth';
-import { User, Mail, Code2, Edit2, Save, X, CheckCircle2, AlertCircle, Upload, FileImage, Bot, BarChart3 } from 'lucide-react';
+import { User, Mail, Code2, Edit2, Save, X, CheckCircle2, AlertCircle, Upload, FileImage, Bot, BarChart3, Lock } from 'lucide-react';
+import Editor from '@monaco-editor/react';
 import Sidebar from '../components/Sidebar';
 
 const TECH_OPTIONS = [
@@ -243,6 +244,22 @@ export default function Profile() {
     total_files: number;
     average_ai_contribution: number;
     average_human_contribution: number;
+  } | null>(null);
+  const [showCodingTest, setShowCodingTest] = useState(false);
+  const [codingTestCode, setCodingTestCode] = useState('');
+  const [codingTestLanguage, setCodingTestLanguage] = useState('javascript');
+  const [submittingCodingTest, setSubmittingCodingTest] = useState(false);
+  const [codingTestResult, setCodingTestResult] = useState<{
+    success: boolean;
+    compiles: boolean;
+    message?: string;
+    error?: string;
+  } | null>(null);
+  const [currentVerifyingSkill, setCurrentVerifyingSkill] = useState<string | null>(null);
+  const [skillVerification, setSkillVerification] = useState<{
+    level_1_completed: number;
+    level_2_completed: number;
+    level_3_completed: number;
   } | null>(null);
   
   // Filter questions based on new skills only
@@ -577,6 +594,11 @@ export default function Profile() {
     setError('');
 
     try {
+      // Get the first new skill being verified
+      const originalSet = new Set(originalTech);
+      const newSkills = selectedTech.filter(tech => !originalSet.has(tech));
+      const skillToVerify = newSkills[0] || 'General';
+
       const response = await fetch('/api/profile/validate-mcq', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -584,6 +606,7 @@ export default function Profile() {
         body: JSON.stringify({ 
           answers: quizAnswers,
           questionIds: filteredQuestions.map(q => q.id),
+          skill: skillToVerify,
         }),
       });
 
@@ -596,6 +619,23 @@ export default function Profile() {
           score: data.score,
           total: data.total,
         });
+        
+        // If quiz passed, show coding test and fetch verification status
+        if (data.success) {
+          setCurrentVerifyingSkill(skillToVerify);
+          setShowCodingTest(true);
+          fetchSkillVerification(skillToVerify);
+          // Set default language based on skill
+          const langMap: Record<string, string> = {
+            'JavaScript': 'javascript',
+            'TypeScript': 'typescript',
+            'Python': 'python',
+            'Java': 'java',
+            'C++': 'cpp',
+            'React': 'javascript',
+          };
+          setCodingTestLanguage(langMap[skillToVerify] || 'javascript');
+        }
       } else {
         setError(data.error || 'Failed to validate answers');
       }
@@ -668,9 +708,16 @@ export default function Profile() {
   };
 
   const handleSubmitAfterVerification = async () => {
-    if (verificationMethod === 'quiz' && !validationResult?.success) {
-      setError(`Please complete the quiz and pass with at least ${requiredCorrect}/${filteredQuestions.length} correct answers`);
-      return;
+    if (verificationMethod === 'quiz') {
+      if (!validationResult?.success) {
+        setError(`Please complete the quiz and pass with at least ${requiredCorrect}/${filteredQuestions.length} correct answers`);
+        return;
+      }
+      // Check if coding test is completed (Level 2 and Level 3)
+      if (showCodingTest && (!skillVerification || skillVerification.level_3_completed !== 1)) {
+        setError('Please complete the coding test (Level 2) to verify your skill');
+        return;
+      }
     }
 
     if (verificationMethod === 'certificate' && !certificateResult?.success) {
@@ -679,6 +726,84 @@ export default function Profile() {
     }
 
     await saveProfile();
+  };
+
+  const fetchSkillVerification = async (skill: string) => {
+    try {
+      const response = await fetch(`/api/skills/${encodeURIComponent(skill)}/verification`, {
+        credentials: 'include',
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setSkillVerification(data);
+      }
+    } catch (error) {
+      console.error('Error fetching skill verification:', error);
+    }
+  };
+
+  const handleSubmitCodingTest = async (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    if (!codingTestCode.trim()) {
+      setError('Please write some code before submitting');
+      return;
+    }
+
+    if (!currentVerifyingSkill) {
+      setError('Skill verification not initialized. Please refresh and try again.');
+      return;
+    }
+
+    setSubmittingCodingTest(true);
+    setCodingTestResult(null);
+    setError('');
+
+    try {
+      console.log('Submitting coding test:', {
+        skill: currentVerifyingSkill,
+        codeLength: codingTestCode.length,
+        language: codingTestLanguage,
+      });
+
+      const response = await fetch('/api/skills/coding-test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          skill: currentVerifyingSkill,
+          code: codingTestCode,
+          language: codingTestLanguage,
+        }),
+      });
+
+      const data = await response.json();
+      console.log('Coding test response:', data);
+
+      if (response.ok) {
+        setCodingTestResult(data);
+        if (data.success) {
+          // Refresh verification status
+          await fetchSkillVerification(currentVerifyingSkill);
+          // Auto-save profile after successful verification
+          setTimeout(() => {
+            saveProfile();
+          }, 2000);
+        } else {
+          setError(data.error || 'Code compilation failed. Please check your code and try again.');
+        }
+      } else {
+        setError(data.error || 'Failed to submit coding test');
+      }
+    } catch (error: any) {
+      console.error('Error submitting coding test:', error);
+      setError(`An error occurred: ${error.message || 'Please check your connection and try again'}`);
+    } finally {
+      setSubmittingCodingTest(false);
+    }
   };
 
   const handleCancel = () => {
@@ -695,6 +820,11 @@ export default function Profile() {
     setCertificateFile(null);
     setCertificatePreview(null);
     setCertificateResult(null);
+    setShowCodingTest(false);
+    setCodingTestCode('');
+    setCodingTestResult(null);
+    setCurrentVerifyingSkill(null);
+    setSkillVerification(null);
     setError('');
   };
 
@@ -1101,7 +1231,7 @@ export default function Profile() {
                               <p className={`font-semibold ${
                                 validationResult.success ? 'text-green-800' : 'text-red-800'
                               }`}>
-                                {validationResult.success ? '🎉 Quiz Passed!' : 'Keep Trying!'}
+                                {validationResult.success ? '🎉 Level 1 Complete!' : 'Keep Trying!'}
                               </p>
                               <p className={`text-sm mt-1 ${
                                 validationResult.success ? 'text-green-700' : 'text-red-700'
@@ -1110,6 +1240,189 @@ export default function Profile() {
                               </p>
                             </div>
                           </div>
+                        </div>
+                      )}
+
+                      {/* Level 2: Coding Test */}
+                      {showCodingTest && validationResult?.success && (
+                        <div className="border-2 border-primary rounded-lg p-6 bg-gradient-to-br from-primary/5 to-accent/5">
+                          <div className="flex items-center gap-3 mb-4">
+                            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                              <Lock className="w-5 h-5 text-primary" />
+                            </div>
+                            <div>
+                              <h3 className="text-xl font-bold text-gray-900">Level 2: Coding Test</h3>
+                              <p className="text-sm text-gray-600">Write code to solve a simple problem. Copy-paste is disabled.</p>
+                            </div>
+                          </div>
+
+                          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+                            <p className="text-yellow-900 text-sm font-semibold mb-1">⚠️ Security Notice</p>
+                            <p className="text-yellow-800 text-sm">
+                              Copy-paste is disabled for this test. You must write the code yourself to verify your skills.
+                            </p>
+                          </div>
+
+                          <div className="mb-4">
+                            <label className="block text-sm font-semibold text-gray-700 mb-2">
+                              Problem: Write a function that returns the sum of two numbers
+                            </label>
+                            <div 
+                              className="border-2 border-gray-200 rounded-lg overflow-hidden"
+                              onPaste={(e: React.ClipboardEvent) => {
+                                // Only prevent paste on the editor itself, not on buttons
+                                if ((e.target as HTMLElement).closest('.monaco-editor')) {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  alert('Copy-paste is disabled for this test. Please write the code yourself.');
+                                }
+                              }}
+                              onCopy={(e: React.ClipboardEvent) => {
+                                // Only prevent copy on the editor itself
+                                if ((e.target as HTMLElement).closest('.monaco-editor')) {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                }
+                              }}
+                              onCut={(e: React.ClipboardEvent) => {
+                                // Only prevent cut on the editor itself
+                                if ((e.target as HTMLElement).closest('.monaco-editor')) {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                }
+                              }}
+                            >
+                              <Editor
+                                height="300px"
+                                language={codingTestLanguage}
+                                value={codingTestCode}
+                                onChange={(value) => setCodingTestCode(value || '')}
+                                theme="vs-dark"
+                                options={{
+                                  minimap: { enabled: false },
+                                  fontSize: 14,
+                                  lineNumbers: 'on',
+                                  readOnly: false,
+                                  // Disable copy-paste
+                                  contextmenu: false,
+                                  copyWithSyntaxHighlighting: false,
+                                  // Disable shortcuts
+                                  quickSuggestions: false,
+                                  suggestOnTriggerCharacters: false,
+                                  acceptSuggestionOnEnter: 'off',
+                                  tabSize: 2,
+                                  wordWrap: 'on',
+                                }}
+                                onMount={(editorInstance) => {
+                                  // Disable copy-paste via keyboard shortcuts
+                                  const monaco = (window as any).monaco;
+                                  if (monaco) {
+                                    try {
+                                      editorInstance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyC, () => false);
+                                      editorInstance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyV, () => false);
+                                      editorInstance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyX, () => false);
+                                    } catch (e) {
+                                      // Ignore if commands can't be added
+                                    }
+                                  }
+                                  // Disable right-click context menu
+                                  editorInstance.onContextMenu(() => false);
+                                }}
+                              />
+                            </div>
+                          </div>
+
+                          {codingTestResult && (
+                            <div className={`border rounded-lg p-4 mb-4 ${
+                              codingTestResult.success
+                                ? 'bg-green-50 border-green-200'
+                                : 'bg-red-50 border-red-200'
+                            }`}>
+                              <div className="flex items-start gap-2">
+                                {codingTestResult.success ? (
+                                  <CheckCircle2 className="w-5 h-5 text-green-600 mt-0.5" />
+                                ) : (
+                                  <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
+                                )}
+                                <div>
+                                  <p className={`font-semibold ${
+                                    codingTestResult.success ? 'text-green-800' : 'text-red-800'
+                                  }`}>
+                                    {codingTestResult.success ? '🎉 Level 2 Complete!' : 'Compilation Failed'}
+                                  </p>
+                                  <p className={`text-sm mt-1 ${
+                                    codingTestResult.success ? 'text-green-700' : 'text-red-700'
+                                  }`}>
+                                    {codingTestResult.message || codingTestResult.error}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {error && (
+                            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+                              <div className="flex items-start gap-2">
+                                <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
+                                <p className="text-red-800 text-sm">{error}</p>
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="flex gap-3">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                console.log('Button clicked', {
+                                  hasCode: !!codingTestCode.trim(),
+                                  codeLength: codingTestCode.length,
+                                  skill: currentVerifyingSkill,
+                                  submitting: submittingCodingTest,
+                                  alreadySuccess: codingTestResult?.success,
+                                });
+                                handleSubmitCodingTest(e);
+                              }}
+                              disabled={!codingTestCode.trim() || submittingCodingTest || codingTestResult?.success || !currentVerifyingSkill}
+                              className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-primary text-white font-semibold rounded-lg hover:bg-primary/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                              title={
+                                !codingTestCode.trim() 
+                                  ? 'Please write some code' 
+                                  : !currentVerifyingSkill 
+                                  ? 'Skill verification not initialized' 
+                                  : submittingCodingTest 
+                                  ? 'Submitting...' 
+                                  : codingTestResult?.success 
+                                  ? 'Already completed' 
+                                  : 'Click to compile and submit'
+                              }
+                            >
+                              {submittingCodingTest ? (
+                                <>
+                                  <Code2 className="w-5 h-5 animate-spin" />
+                                  Compiling...
+                                </>
+                              ) : (
+                                <>
+                                  <Code2 className="w-5 h-5" />
+                                  Compile & Submit
+                                </>
+                              )}
+                            </button>
+                          </div>
+
+                          {skillVerification && skillVerification.level_3_completed === 1 && (
+                            <div className="mt-4 bg-gradient-to-r from-green-50 to-accent/10 border-2 border-green-200 rounded-lg p-4">
+                              <div className="flex items-center gap-2">
+                                <CheckCircle2 className="w-6 h-6 text-green-600" />
+                                <div>
+                                  <p className="font-bold text-green-900">🎊 Skill Verification Accomplished!</p>
+                                  <p className="text-sm text-green-700 mt-1">
+                                    You have successfully completed all 3 levels. Your {currentVerifyingSkill} skill is now verified!
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
 
