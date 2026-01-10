@@ -15,10 +15,20 @@ WORKING LINK: https://colearn-app.abilashkumar290.workers.dev/
 - **Authentication**: Google OAuth and GitHub integration for seamless signup
 
 ### Key Highlights
-- ✅ Real-time collaboration tools
+- ✅ Verified Skill Assessment: Two-step coding challenges with AI support or certificate-based verification to validate real skills.
 - ✅ AI transparency and usage logging
-- ✅ Comprehensive skill tracking and verification
 - ✅ Cloudflare Workers backend with D1 database
+- ✅ AI-Powered Chatbot: Instant assistance for learning, problem-solving, and guidance.
+- ✅ Intelligent Code Review: AI reviews code and provides smart suggestions to improve quality and best practices.
+- ✅ Real-time collaboration tools
+- ✅ Smart Pods:
+         Collaborative coding pods filtered by skills and location.
+         Users can create, browse, and join pods easily.
+         Code contributions are analyzed to measure AI usage and originality.
+- ✅Developer Communities:
+         Dedicated communities for each programming language.
+         Group chats, direct messaging, and file sharing.
+         Seamless collaboration across communities and pods
 
 ## 🛠️ Tech Stack
 
